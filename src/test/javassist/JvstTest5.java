@@ -4,6 +4,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.TypeVariable;
 
 import javassist.bytecode.AnnotationsAttribute;
+import javassist.bytecode.AttributeInfo;
 import javassist.bytecode.ClassFile;
 import javassist.bytecode.ConstPool;
 import javassist.bytecode.InnerClassesAttribute;
@@ -194,5 +195,93 @@ public class JvstTest5 extends JvstTestRoot {
         cc.writeFile();
         Object obj = make(cc.getName());
         assertEquals(21713, invoke(obj, "run"));
+    }
+
+    public void testBadClass() throws Exception {
+        CtClass badClass = ClassPool.getDefault().makeClass("badClass");
+        String src = String.join(System.getProperty("line.separator"),
+                "public void eval () {",
+                "    if (true) {",
+                "        double t=0;",
+                "    } else {",
+                "        double t=0;",
+                "    }",
+                "    for (int i=0; i < 2; i++) {",
+                "        int a=0;",
+                "        int b=0;",
+                "        int c=0;",
+                "        int d=0;",
+                "        if (true) {",
+                "            int e = 0;",
+                "        }",
+                "    }",
+                "}");
+        System.out.println(src);
+        badClass.addMethod(CtMethod.make(src, badClass));
+        Class clazzz = badClass.toClass();
+        Object obj = clazzz.newInstance(); // <-- falls here
+    }
+
+    public void test83StackmapWithArrayType() throws Exception {
+    	final CtClass ctClass = sloader.get("test5.StackmapWithArray83");
+        final CtMethod method = ctClass.getDeclaredMethod("bytecodeVerifyError");
+        method.addLocalVariable("test_localVariable", CtClass.intType);
+        method.insertBefore("{ test_localVariable = 1; }");
+
+        final CtMethod method2 = ctClass.getDeclaredMethod("bytecodeVerifyError2");
+        method2.addLocalVariable("test_localVariable", CtClass.intType);
+        method2.insertBefore("{ test_localVariable = 1; }");
+
+        ctClass.writeFile();
+        Object obj = make(ctClass.getName());
+        assertEquals(1, invoke(obj, "run"));
+    }
+
+    public void testAddDefaultMethod() throws Exception {
+        CtClass cc = sloader.makeInterface("test5.AddDefaultMethod");
+        cc.addMethod(CtNewMethod.make("static int foo() { return 1; }", cc));
+        cc.addMethod(CtNewMethod.make("public static int foo1() { return 1; }", cc));
+        cc.addMethod(CtNewMethod.make("public int foo2() { return 1; }", cc));
+        cc.addMethod(CtNewMethod.make("int foo3() { return 1; }", cc));
+        try {
+            cc.addMethod(CtNewMethod.make("private int foo4() { return 1; }", cc));
+            fail();
+        } catch (CannotCompileException e) {}
+        try {
+            cc.addMethod(CtNewMethod.make("private static int foo5() { return 1; }", cc));
+            fail();
+        } catch (CannotCompileException e) {}
+    }
+
+    public void testRemoveAnnotatino() throws Exception {
+        CtClass cc = sloader.get("test5.RemoveAnnotation");
+        AnnotationsAttribute aa
+            = (AnnotationsAttribute)cc.getClassFile().getAttribute(AnnotationsAttribute.invisibleTag);
+        assertTrue(aa.removeAnnotation("test5.RemoveAnno1"));
+        AttributeInfo ai = cc.getClassFile().removeAttribute(AnnotationsAttribute.invisibleTag);
+        assertEquals(ai.getName(), AnnotationsAttribute.invisibleTag);
+
+        CtMethod foo = cc.getDeclaredMethod("foo");
+        AnnotationsAttribute aa2 = (AnnotationsAttribute)foo.getMethodInfo().getAttribute(AnnotationsAttribute.invisibleTag);
+        assertTrue(aa2.removeAnnotation("test5.RemoveAnno1"));
+
+        CtMethod bar = cc.getDeclaredMethod("bar");
+        AnnotationsAttribute aa3 = (AnnotationsAttribute)bar.getMethodInfo().getAttribute(AnnotationsAttribute.invisibleTag);
+        assertFalse(aa3.removeAnnotation("test5.RemoveAnno1"));
+        assertTrue(aa3.removeAnnotation("test5.RemoveAnno2"));
+        AttributeInfo ai2 = bar.getMethodInfo().removeAttribute(AnnotationsAttribute.invisibleTag);
+        assertEquals(ai2.getName(), AnnotationsAttribute.invisibleTag);
+
+        CtMethod run = cc.getDeclaredMethod("run");
+        AttributeInfo ai3 = run.getMethodInfo().removeAttribute(AnnotationsAttribute.invisibleTag);
+        assertNull(ai3);
+
+        CtField baz = cc.getDeclaredField("baz");
+        AttributeInfo ai4 = baz.getFieldInfo().removeAttribute(AnnotationsAttribute.invisibleTag);
+        assertEquals(ai4.getName(), AnnotationsAttribute.invisibleTag);
+
+        cc.writeFile();
+        Object obj = make(cc.getName());
+        assertEquals(3, invoke(obj, "run"));
     }
 }
